@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Ben 10 Protocol: Stable Backing Mix</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #010201;
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            user-select: none;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-sizing: border-box;
+            padding: 20px;
+        }
+        .hud-panel {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+        }
+        .stat-box {
+            background: rgba(2, 15, 5, 0.9);
+            border: 2px solid #00ff64;
+            border-radius: 8px;
+            padding: 12px 20px;
+            color: #ffffff;
+            font-size: 16px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            box-shadow: 0 0 20px rgba(0, 255, 100, 0.3);
+            backdrop-filter: blur(8px);
+        }
+        .villain-box {
+            border-color: #ff5555;
+            box-shadow: 0 0 20px rgba(255, 85, 85, 0.25);
+            text-align: right;
+        }
+        .hp-bar-outer {
+            width: 220px;
+            height: 12px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid #00ff64;
+            margin-top: 6px;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .hero-bar { border-color: #00ff64; }
+        .villain-bar { border-color: #ff5555; }
+        .hp-fill {
+            width: 100%;
+            height: 100%;
+            transition: width 0.15s ease;
+        }
+        #hero-hp { background: #00ff64; box-shadow: 0 0 10px #00ff64; }
+        #villain-hp { background: #ff5555; box-shadow: 0 0 10px #ff5555; }
+        .screen-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 20;
+            background: rgba(1, 6, 2, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(10px);
+            display: none;
+        }
+        .screen-overlay h1 {
+            font-size: 56px;
+            margin: 0 0 10px 0;
+            letter-spacing: 4px;
+        }
+        .screen-overlay p {
+            font-size: 20px;
+            color: #a0cda5;
+            margin: 0 0 30px 0;
+        }
+        .btn-prompt {
+            font-size: 18px;
+            color: #00ff64;
+            animation: pulse 1.5s infinite;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.3; }
+            50% { opacity: 1; }
+            100% { opacity: 0.3; }
+        }
+        .neon-green { color: #00ff64; text-shadow: 0 0 15px #00ff64; }
+        .neon-blue { color: #00d2ff; text-shadow: 0 0 15px #00d2ff; }
+        .neon-red { color: #ff5555; text-shadow: 0 0 15px #ff5555; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <div class="hud-panel">
+            <div class="stat-box">
+                <div class="neon-blue">HERO: Arpan Chor</div>
+                <div id="score-ui" style="margin-top: 3px;">SCORE: 0000</div>
+                <div class="hp-bar-outer hero-bar"><div id="hero-hp" class="hp-fill"></div></div>
+            </div>
+            <div class="stat-box" style="border-color: #00ff64; box-shadow: 0 0 15px rgba(0,255,100,0.2); align-self: center;">
+                <div id="level-ui" class="neon-green" style="font-size: 20px; padding: 0 10px;">LEVEL 1</div>
+            </div>
+            <div class="stat-box villain-box">
+                <div class="neon-red">VILLAIN: Ishak Vatuwa</div>
+                <div id="boss-status" style="margin-top: 3px;">OMNITRIX WAR: ACTIVE</div>
+                <div class="hp-bar-outer villain-bar"><div id="villain-hp" class="hp-fill"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="game-over-screen" class="screen-overlay">
+        <h1 class="neon-red">SYSTEM TERMINATED</h1>
+        <p>Arpan Chor failed to protect the Omnitrix network from Ishak Vatuwa.</p>
+        <div class="btn-prompt">PRESS 'R' TO RESTORE INTERFACE MATRIX</div>
+    </div>
+
+    <div id="victory-screen" class="screen-overlay">
+        <h1 class="neon-green">OMNITRIX PROTECTION COMPLETE</h1>
+        <p>Arpan Chor completely purged Ishak Vatuwa from the galactic core!</p>
+        <div id="final-score" style="color: #fff; font-size: 20px; margin-bottom: 20px;"></div>
+        <div class="btn-prompt" style="color: #00ff64;">PRESS 'R' TO REINITIALIZE SIMULATION</div>
+    </div>
+
+    <!-- Official Theme Stream -->
+    <audio id="officialTheme" loop>
+        <source src="https://ia800902.us.archive.org/33/items/ben-10-theme-song/Ben%2010%20Theme%20Song.mp3" type="audio/mp3">
+    </audio>
+
+    <script>
+        let scene, camera, renderer;
+        let score = 0, level = 1, gameOver = false, victory = false;
+        
+        let lasers = [];
+        let minions = [];
+        let asteroids = [];
+        let stars = [];
+        let planets = [];
+
+        let keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, Space: false };
+
+        const BOUNDS_X = 28;
+        const BOUNDS_Y = 17;
+        let lastShotTime = 0;
+        let minionSpawnTimer = 0;
+        let asteroidSpawnTimer = 0;
+
+        let heroJet, bossJet, omnitrixPlanetGroup;
+        let bossDirection = 1;
+        
+        let heroMaxHp = 5;
+        let heroHp = heroMaxHp;
+        let bossMaxHp = 15;
+        let bossHp = bossMaxHp;
+
+        // --- AUDIO ENGINE ---
+        let audioCtx = null;
+        let engineOsc = null;
+        let engineGain = null;
+        let audioInitialized = false;
+        let backingStep = 0;
+
+        // A clean, driving space bass backing progression (Root + Fifth changes)
+        const backingFrequencies = [73.42, 73.42, 110.00, 73.42, 82.41, 82.41, 123.47, 82.41];
+
+        function startAudioEngine() {
+            if (audioInitialized) return;
+            audioInitialized = true;
+
+            const officialAudio = document.getElementById('officialTheme');
+            officialAudio.volume = 0.40; 
+            officialAudio.play().catch(e => console.log("Interaction pending browser verification."));
+
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+            // Continuous Jet Engine Rumble
+            engineOsc = audioCtx.createOscillator();
+            engineGain = audioCtx.createGain();
+            engineOsc.type = 'sawtooth';
+            engineOsc.frequency.setValueAtTime(55, audioCtx.currentTime); 
+
+            let filter = audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(100, audioCtx.currentTime);
+
+            engineGain.gain.setValueAtTime(0.012, audioCtx.currentTime); 
+            
+            engineOsc.connect(filter);
+            filter.connect(engineGain);
+            engineGain.connect(audioCtx.destination);
+            engineOsc.start();
+
+            // Simple Rhythmic Backing Track Loop
+            setInterval(() => {
+                if (gameOver || victory) return;
+                playBackingPulse(backingFrequencies[backingStep], 0.18);
+                backingStep = (backingStep + 1) % backingFrequencies.length;
+            }, 200); // Drives a steady 120 BPM electro pulse
+        }
+
+        function playBackingPulse(freq, duration) {
+            if (!audioCtx) return;
+            let osc = audioCtx.createOscillator();
+            let gainNode = audioCtx.createGain();
+            
+            // Triangle wave creates a smooth, punching modern sub-bass backing tone
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            
+            gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime); 
+            gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+            
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        function playRealLaserSound() {
+            if (!audioCtx) return;
+            let osc1 = audioCtx.createOscillator();
+            let osc2 = audioCtx.createOscillator();
+            let gainNode = audioCtx.createGain();
+            
+            osc1.type = 'sawtooth';
+            osc2.type = 'sine';
+            
+            osc1.frequency.setValueAtTime(1400, audioCtx.currentTime);
+            osc1.frequency.exponentialRampToValueAtTime(180, audioCtx.currentTime + 0.1); 
+            
+            osc2.frequency.setValueAtTime(1100, audioCtx.currentTime);
+            osc2.frequency.exponentialRampToValueAtTime(120, audioCtx.currentTime + 0.1); 
+
+            gainNode.gain.setValueAtTime(0.07, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.1);
+            
+            osc1.connect(gainNode);
+            osc2.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            osc1.start();
+            osc2.start();
+            osc1.stop(audioCtx.currentTime + 0.1);
+            osc2.stop(audioCtx.currentTime + 0.1);
+        }
+
+        function playExplosionSound() {
+            if (!audioCtx) return;
+            let osc = audioCtx.createOscillator();
+            let gainNode = audioCtx.createGain();
+            
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(90, audioCtx.currentTime);
+            osc.frequency.linearRampToValueAtTime(20, audioCtx.currentTime + 0.3); 
+            
+            gainNode.gain.setValueAtTime(0.12, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.3);
+            
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.3);
+        }
+
+        function updateEngineSound() {
+            if (!audioCtx || gameOver || victory) {
+                if(engineGain) engineGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+                return;
+            }
+            let isMoving = keys['ArrowUp'] || keys['ArrowDown'] || keys['ArrowLeft'] || keys['ArrowRight'];
+            if (isMoving) {
+                engineOsc.frequency.setTargetAtTime(80, audioCtx.currentTime, 0.1);
+                engineGain.gain.setTargetAtTime(0.030, audioCtx.currentTime, 0.1);
+            } else {
+                engineOsc.frequency.setTargetAtTime(55, audioCtx.currentTime, 0.1);
+                engineGain.gain.setTargetAtTime(0.012, audioCtx.currentTime, 0.1);
+            }
+        }
+
+        // --- CORE LOGIC INITIALIZATION ---
+        init();
+        animate();
+
+        function init() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x010201, 0.012);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, 32);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0x112215, 2.5);
+            scene.add(ambientLight);
+
+            const heroLight = new THREE.DirectionalLight(0x55ccff, 3.0);
+            heroLight.position.set(-15, 10, 10);
+            scene.add(heroLight);
+
+            const villainLight = new THREE.DirectionalLight(0xff5555, 3.0);
+            villainLight.position.set(15, -10, 10);
+            scene.add(villainLight);
+
+            createSolarSystem();
+
+            heroJet = buildPremiumFighter(0x113355, 0x00d2ff, false); 
+            bossJet = buildPremiumFighter(0x552222, 0xff5555, true);  
+            
+            heroJet.position.set(-18, 0, 0);
+            bossJet.position.set(18, 0, 0);
+
+            scene.add(heroJet);
+            scene.add(bossJet);
+
+            window.addEventListener('keydown', e => { 
+                startAudioEngine(); 
+                if(e.code === 'Space') keys['Space'] = true;
+                else keys[e.key] = true;
+
+                if((gameOver || victory) && e.key.toLowerCase() === 'r') resetGame();
+            });
+            window.addEventListener('keyup', e => { 
+                if(e.code === 'Space') keys['Space'] = false;
+                else keys[e.key] = false;
+            });
+            window.addEventListener('click', startAudioEngine);
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function buildPremiumFighter(primaryColor, glowColor, isEnemy) {
+            const jetGroup = new THREE.Group();
+            const hullGeo = new THREE.CylinderGeometry(0.1, 0.55, 4.0, 5);
+            hullGeo.rotateZ(isEnemy ? Math.PI / 2 : -Math.PI / 2);
+            const hullMat = new THREE.MeshStandardMaterial({ color: primaryColor, metalness: 0.85, roughness: 0.2 });
+            const hull = new THREE.Mesh(hullGeo, hullMat);
+            jetGroup.add(hull);
+
+            const wingGeo = new THREE.ConeGeometry(2.0, 2.6, 3);
+            wingGeo.rotateX(Math.PI / 2);
+            wingGeo.rotateY(isEnemy ? -Math.PI / 4 : Math.PI / 4);
+            const wingMat = new THREE.MeshStandardMaterial({ color: primaryColor, metalness: 0.7, roughness: 0.3 });
+            const leftWing = new THREE.Mesh(wingGeo, wingMat);
+            leftWing.position.set(isEnemy ? 0.4 : -0.4, 0, 1.2);
+            leftWing.scale.set(1, 0.06, 1);
+            
+            const rightWing = leftWing.clone();
+            rightWing.position.z = -1.2;
+            jetGroup.add(leftWing, rightWing);
+
+            const engineGeo = new THREE.BoxGeometry(0.8, 0.35, 0.45);
+            const engineMat = new THREE.MeshStandardMaterial({ color: glowColor, emissive: glowColor, emissiveIntensity: 1.5 });
+            const leftEngine = new THREE.Mesh(engineGeo, engineMat);
+            leftEngine.position.set(isEnemy ? 1.7 : -1.7, 0.05, 0.5);
+            
+            const rightEngine = leftEngine.clone();
+            rightEngine.position.z = -0.5;
+            jetGroup.add(leftEngine, rightEngine);
+            return jetGroup;
+        }
+
+        function applyEvolutionScale() {
+            let scaleFactor = 1.0 + (level - 1) * 0.25;
+            heroJet.scale.set(scaleFactor, scaleFactor, scaleFactor);
+            bossJet.scale.set(scaleFactor, scaleFactor, scaleFactor);
+            document.getElementById('boss-status').innerText = `EVOLUTION: MK-${level}`;
+        }
+
+        function createSolarSystem() {
+            const starGeo = new THREE.BufferGeometry();
+            const starCount = 1000;
+            const starPositions = new Float32Array(starCount * 3);
+            for(let i=0; i<starCount*3; i+=3) {
+                starPositions[i] = (Math.random() - 0.5) * 180;
+                starPositions[i+1] = (Math.random() - 0.5) * 120;
+                starPositions[i+2] = -Math.random() * 60 - 20;
+            }
+            starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+            const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.22, transparent: true, opacity: 0.85 });
+            const starField = new THREE.Points(starGeo, starMat);
+            scene.add(starField);
+
+            planets.push(createProceduralPlanet(3.8, 0x2a6f97, 0x014f86, 16, 0.004, false, false));
+            planets.push(createProceduralPlanet(2.5, 0xe29578, 0xffddd2, 34, 0.0015, false, false));
+            planets.push(createProceduralPlanet(4.5, 0xe0a96d, 0xddc5a2, 45, 0.001, true, false)); 
+
+            omnitrixPlanetGroup = createProceduralPlanet(6.0, 0x0a0a0a, 0x00ff44, 25, 0.002, false, true);
+            planets.push(omnitrixPlanetGroup);
+        }
+
+        function createProceduralPlanet(radius, baseColor, stripeColor, orbitRadius, orbitSpeed, hasRings, isOmnitrix) {
+            const pivot = new THREE.Group();
+            scene.add(pivot);
+
+            const sphereGeo = new THREE.SphereGeometry(radius, 32, 16);
+            const sphereMat = new THREE.MeshStandardMaterial({
+                color: baseColor, roughness: 0.6, metalness: 0.2, emissive: stripeColor, emissiveIntensity: isOmnitrix ? 0.3 : 0.1
+            });
+            const mesh = new THREE.Mesh(sphereGeo, sphereMat);
+            mesh.position.x = orbitRadius;
+            pivot.add(mesh);
+
+            if (isOmnitrix) {
+                const faceMat = new THREE.MeshStandardMaterial({ color: 0x00ff64, emissive: 0x00ff33, emissiveIntensity: 1.2 });
+                const shapeGeo1 = new THREE.ConeGeometry(radius * 0.4, radius * 0.7, 4);
+                shapeGeo1.rotateX(Math.PI / 2);
+                const mark1 = new THREE.Mesh(shapeGeo1, faceMat);
+                mark1.position.set(orbitRadius, 0, radius * 0.95);
+                pivot.add(mark1);
+
+                const shapeGeo2 = new THREE.ConeGeometry(radius * 0.4, radius * 0.7, 4);
+                shapeGeo2.rotateX(-Math.PI / 2);
+                const mark2 = new THREE.Mesh(shapeGeo2, faceMat);
+                mark2.position.set(orbitRadius, 0, radius * 0.95);
+                pivot.add(mark2);
+            }
+
+            if (hasRings) {
+                const ringGeo = new THREE.RingGeometry(radius * 1.4, radius * 2.3, 30);
+                ringGeo.rotateX(Math.PI / 2.5);
+                const ringMat = new THREE.MeshStandardMaterial({ color: baseColor, side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
+                const ring = new THREE.Mesh(ringGeo, ringMat);
+                ring.position.x = orbitRadius;
+                pivot.add(ring);
+            }
+
+            pivot.rotation.y = Math.random() * Math.PI * 2;
+            pivot.position.z = -35;
+            return { pivot: pivot, mesh: mesh, speed: orbitSpeed };
+        }
+
+        function fireTwinLasers() {
+            const now = performance.now();
+            let fireInterval = Math.max(70, 160 - (level * 25));
+            if (now - lastShotTime < fireInterval) return;
+            lastShotTime = now;
+
+            playRealLaserSound(); 
+
+            const laserMat = new THREE.MeshBasicMaterial({ color: 0x00d2ff });
+            for(let offset of [-0.4, 0.4]) {
+                const laserGeo = new THREE.CylinderGeometry(0.05, 0.05, 1.8, 4);
+                laserGeo.rotateZ(Math.PI / 2);
+                const laser = new THREE.Mesh(laserGeo, laserMat);
+                laser.position.set(heroJet.position.x + 2, heroJet.position.y + offset, heroJet.position.z);
+                scene.add(laser);
+                lasers.push(laser);
+            }
+        }
+
+        function spawnAsteroid() {
+            const size = 0.5 + Math.random() * 0.9;
+            const asteroidGeo = new THREE.DodecahedronGeometry(size, 0);
+            const asteroidMat = new THREE.MeshStandardMaterial({ 
+                color: 0x6e473b,       
+                roughness: 0.95, 
+                metalness: 0.05,
+                emissive: 0x3d231b     
+            });
+            const asteroid = new THREE.Mesh(asteroidGeo, asteroidMat);
+            
+            asteroid.position.set(BOUNDS_X + 5, (Math.random() - 0.5) * (BOUNDS_Y * 2), 0);
+            scene.add(asteroid);
+            asteroids.push(asteroid);
+        }
+
+        function spawnMinion() {
+            const childGeo = new THREE.ConeGeometry(0.22, 0.9, 4);
+            childGeo.rotateZ(Math.PI / 2);
+            const childMat = new THREE.MeshStandardMaterial({ color: 0xff5555, emissive: 0x440000 });
+            const child = new THREE.Mesh(childGeo, childMat);
+
+            child.position.set(bossJet.position.x - 2, bossJet.position.y + (Math.random() - 0.5) * 6, 0);
+            scene.add(child);
+            minions.push(child);
+        }
+
+        function resetGame() {
+            score = 0; level = 1; gameOver = false; victory = false;
+            heroHp = heroMaxHp; bossHp = bossMaxHp;
+            
+            lasers.forEach(l => scene.remove(l));
+            minions.forEach(m => scene.remove(m));
+            asteroids.forEach(a => scene.remove(a));
+            lasers = []; minions = []; asteroids = [];
+
+            heroJet.position.set(-18, 0, 0);
+            bossJet.position.set(18, 0, 0);
+            applyEvolutionScale();
+
+            const officialAudio = document.getElementById('officialTheme');
+            officialAudio.currentTime = 0; 
+
+            document.getElementById('game-over-screen').style.display = "none";
+            document.getElementById('victory-screen').style.display = "none";
+            document.getElementById('hero-hp').style.width = "100%";
+            document.getElementById('villain-hp').style.width = "100%";
+            document.getElementById('score-ui').innerText = "SCORE: 0000";
+            document.getElementById('level-ui').innerText = "LEVEL 1";
+        }
+
+        function processNextLevel() {
+            level++;
+            lasers.forEach(l => scene.remove(l));
+            minions.forEach(m => scene.remove(m));
+            lasers = []; minions = [];
+            
+            bossMaxHp = 15 + (level * 5);
+            bossHp = bossMaxHp;
+            heroHp = Math.min(heroMaxHp, heroHp + 2);
+            
+            applyEvolutionScale();
+            
+            document.getElementById('hero-hp').style.width = `${(heroHp / heroMaxHp) * 100}%`;
+            document.getElementById('villain-hp').style.width = "100%";
+            document.getElementById('level-ui').innerText = `LEVEL ${level}`;
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            updateEngineSound(); 
+
+            if (!gameOver && !victory) {
+                planets.forEach(obj => {
+                    obj.pivot.rotation.y += obj.speed; 
+                    obj.mesh.rotation.y += 0.01;      
+                });
+
+                if (keys['ArrowUp'] && heroJet.position.y < BOUNDS_Y) heroJet.position.y += 0.35;
+                if (keys['ArrowDown'] && heroJet.position.y > -BOUNDS_Y) heroJet.position.y -= 0.35;
+                if (keys['ArrowLeft'] && heroJet.position.x > -BOUNDS_X) heroJet.position.x -= 0.35;
+                if (keys['ArrowRight'] && heroJet.position.x < 0) heroJet.position.x += 0.35;
+                if (keys['Space']) fireTwinLasers();
+
+                if(keys['ArrowUp']) heroJet.rotation.z = 0.22;
+                else if(keys['ArrowDown']) heroJet.rotation.z = -0.22;
+                else heroJet.rotation.z = 0;
+
+                let currentBossSpeed = 0.15 + (level * 0.04);
+                bossJet.position.y += currentBossSpeed * bossDirection;
+                if (bossJet.position.y >= BOUNDS_Y || bossJet.position.y <= -BOUNDS_Y) {
+                    bossDirection *= -1;
+                }
+
+                minionSpawnTimer++;
+                if (minionSpawnTimer >= Math.max(10, 40 - (level * 5))) {
+                    minionSpawnTimer = 0;
+                    spawnMinion();
+                }
+
+                asteroidSpawnTimer++;
+                if (asteroidSpawnTimer >= Math.max(15, 50 - (level * 6))) {
+                    asteroidSpawnTimer = 0;
+                    spawnAsteroid();
+                }
+
+                for (let i = lasers.length - 1; i >= 0; i--) {
+                    lasers[i].position.x += 0.9;
+                    if (lasers[i].position.x > BOUNDS_X + 5) {
+                        scene.remove(lasers[i]);
+                        lasers.splice(i, 1);
+                    }
+                }
+
+                let currentMinionSpeed = 0.24 + (level * 0.03);
+                for (let i = minions.length - 1; i >= 0; i--) {
+                    minions[i].position.x -= currentMinionSpeed;
+                    if (minions[i].position.x < -BOUNDS_X - 5) {
+                        scene.remove(minions[i]);
+                        minions.splice(i, 1);
+                    }
+                }
+
+                for (let i = asteroids.length - 1; i >= 0; i--) {
+                    asteroids[i].position.x -= 0.25;
+                    asteroids[i].rotation.x += 0.01;
+                    asteroids[i].rotation.y += 0.02;
+                    if (asteroids[i].position.x < -BOUNDS_X - 5) {
+                        scene.remove(asteroids[i]);
+                        asteroids.splice(i, 1);
+                    }
+                }
+
+                let heroSphere = new THREE.Sphere(heroJet.position, 1.4 * heroJet.scale.x);
+                let bossSphere = new THREE.Sphere(bossJet.position, 2.0 * bossJet.scale.x);
+
+                if (heroSphere.intersectsSphere(bossSphere)) {
+                    heroHp = 0;
+                    gameOver = true;
+                    playExplosionSound();
+                }
+
+                for(let i = lasers.length - 1; i >= 0; i--) {
+                    let laserBox = new THREE.Box3().setFromObject(lasers[i]);
+                    let bossBox = new THREE.Box3().setFromObject(bossJet);
+
+                    if(laserBox.intersectsBox(bossBox)) {
+                        bossHp--;
+                        score += 150;
+                        playExplosionSound();
+                        document.getElementById('villain-hp').style.width = `${(bossHp / bossMaxHp) * 100}%`;
+                        document.getElementById('score-ui').innerText = `SCORE: ${String(score).padStart(4, '0')}`;
+                        scene.remove(lasers[i]);
+                        lasers.splice(i, 1);
+
+                        if(bossHp <= 0) {
+                            if(level >= 3) victory = true;
+                            else processNextLevel();
+                        }
+                        continue;
+                    }
+
+                    for(let j = asteroids.length - 1; j >= 0; j--) {
+                        let asteroidBox = new THREE.Box3().setFromObject(asteroids[j]);
+                        if(laserBox.intersectsBox(asteroidBox)) {
+                            score += 50;
+                            playExplosionSound();
+                            document.getElementById('score-ui').innerText = `SCORE: ${String(score).padStart(4, '0')}`;
+                            scene.remove(asteroids[j]);
+                            asteroids.splice(j, 1);
+                            scene.remove(lasers[i]);
+                            lasers.splice(i, 1);
+                            break;
+                        }
+                    }
+                }
+
+                for(let i = minions.length - 1; i >= 0; i--) {
+                    let minionSphere = new THREE.Sphere(minions[i].position, 0.5);
+                    if(heroSphere.intersectsSphere(minionSphere)) {
+                        heroHp--;
+                        playExplosionSound();
+                        document.getElementById('hero-hp').style.width = `${(heroHp / heroMaxHp) * 100}%`;
+                        scene.remove(minions[i]);
+                        minions.splice(i, 1);
+                        if(heroHp <= 0) gameOver = true;
+                    }
+                }
+
+                for(let i = asteroids.length - 1; i >= 0; i--) {
+                    let astBox = new THREE.Box3().setFromObject(asteroids[i]);
+                    let heroBox = new THREE.Box3().setFromObject(heroJet);
+                    if(heroBox.intersectsBox(astBox)) {
+                        heroHp -= 2; 
+                        playExplosionSound();
+                        document.getElementById('hero-hp').style.width = `${Math.max(0, (heroHp / heroMaxHp) * 100)}%`;
+                        scene.remove(asteroids[i]);
+                        asteroids.splice(i, 1);
+                        if(heroHp <= 0) gameOver = true;
+                    }
+                }
+            }
+
+            if (gameOver) document.getElementById('game-over-screen').style.display = "flex";
+            if (victory) {
+                document.getElementById('final-score').innerText = `FINAL SCORE SECURED: ${score}`;
+                document.getElementById('victory-screen').style.display = "flex";
+            }
+
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
